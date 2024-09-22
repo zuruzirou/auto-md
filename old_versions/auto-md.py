@@ -12,20 +12,12 @@ import tempfile
 import uuid
 import threading
 import queue
-import configparser  # 追加
+import configparser
 
-class QueueHandler(logging.Handler):
-    def __init__(self, log_queue):
-        super().__init__()
-        self.log_queue = log_queue
-
-    def emit(self, record):
-        self.log_queue.put(self.format(record))
-
-# file~~extensions~~configuration
+# 定数定義
 TEXT_EXTENSIONS = [
     '.txt', '.md', '.html', '.css', '.py', '.js', '.yaml', '.yml',
-    '.json', '.xml', '.csv', '.rst', '.ini', '.cfg', '.log', '.conf', '.java'  # .javaを追加
+    '.json', '.xml', '.csv', '.rst', '.ini', '.cfg', '.log', '.conf', '.java'
 ]
 
 SKIP_EXTENSIONS = [
@@ -34,24 +26,33 @@ SKIP_EXTENSIONS = [
     '.mkv', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.ico'
 ]
 
-# スキップするフォルダのリスト
-SKIP_FOLDERS = ['.github', '.git', 'node_modules']  # 必要に応じて追加
+SKIP_FOLDERS = ['.github', '.git', 'node_modules']
 
+# ログキュー用ハンドラー
+class QueueHandler(logging.Handler):
+    def __init__(self, log_queue):
+        super().__init__()
+        self.log_queue = log_queue
+
+    def emit(self, record):
+        self.log_queue.put(self.format(record))
+
+# テキストクリーンアップ関数
 def clean_text(text):
     """
-    Perform basic cleaning of the text.
+    テキストの基本的なクリーンアップを実施。
     """
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[^\x00-\x7F]+', '', text)
     return text.strip()
 
+# Markdownフォーマット関数
 def format_as_markdown(text, title, file_path, all_files):
     """
-    Format the cleaned text into an optimized Markdown structure for LLM indexing.
+    クリーンアップ済みテキストをLLMインデックス用に最適化されたMarkdown形式に整形。
     """
     lines = text.split('\n')
-    formatted_text = f"# {title}\n\n"
-    formatted_text += "## Metadata\n"
+    formatted_text = f"# {title}\n\n## Metadata\n"
     formatted_text += f"- **Generated on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
     if 'github.com' in file_path.lower():
@@ -60,18 +61,17 @@ def format_as_markdown(text, title, file_path, all_files):
     else:
         source = os.path.basename(os.path.dirname(file_path))
 
-    formatted_text += f"- **Source:** {source}\n\n"
-
-    formatted_text += f"# {title}\n\n"
+    formatted_text += f"- **Source:** {source}\n\n# {title}\n\n"
     for line in lines:
         if line.strip():
             formatted_text += f"{line.strip()}\n\n"
 
     return formatted_text
 
+# ファイル処理関数
 def process_file(file_path, output_dir, single_file, all_files):
     """
-    Process a single text file, clean, format, and either save to individual file or return content.
+    単一のテキストファイルを処理し、クリーンアップ、フォーマット後に保存または内容を返す。
     """
     logging.info(f"Processing file: {file_path}")
     try:
@@ -96,13 +96,13 @@ def process_file(file_path, output_dir, single_file, all_files):
         logging.error(f"Error processing file {file_path}: {e}")
         return None
 
+# フォルダ処理関数
 def process_folder(folder_path, output_dir, single_file, combined_content, all_files):
     """
-    Process all text files in a given folder (and its subfolders).
+    指定されたフォルダ内のすべてのテキストファイルを処理（サブフォルダ含む）。
     """
     logging.info(f"Processing folder: {folder_path}")
     for root, dirs, files in os.walk(folder_path):
-        # スキップするフォルダを除外
         dirs[:] = [d for d in dirs if d not in SKIP_FOLDERS]
         for file in files:
             file_path = os.path.join(root, file)
@@ -119,9 +119,10 @@ def process_folder(folder_path, output_dir, single_file, combined_content, all_f
             elif any(file.endswith(ext) for ext in SKIP_EXTENSIONS):
                 logging.info(f"Skipping file: {file_path}")
 
+# ZIP抽出関数
 def extract_zip(zip_path, extract_to):
     """
-    Extract a zip file to the specified directory.
+    ZIPファイルを指定されたディレクトリに抽出。
     """
     logging.info(f"Extracting zip file: {zip_path}")
     try:
@@ -131,16 +132,16 @@ def extract_zip(zip_path, extract_to):
     except Exception as e:
         logging.error(f"Error extracting zip file {zip_path}: {e}")
 
+# Gitリポジトリクローン関数
 def clone_git_repo(repo_url, temp_folder, depth=None):
     """
-    Clone a GitHub repository to the specified directory.
+    GitHubリポジトリを指定されたディレクトリにクローン。
     """
     logging.info(f"Cloning GitHub repository: {repo_url}")
     try:
-        # 既存のディレクトリがある場合は削除
         if os.path.exists(temp_folder):
             shutil.rmtree(temp_folder)
-        
+
         cmd = ["git", "clone"]
         if depth is not None:
             cmd.extend(["--depth", str(depth)])
@@ -152,9 +153,10 @@ def clone_git_repo(repo_url, temp_folder, depth=None):
         logging.error(f"Error cloning GitHub repository {repo_url}: {e}")
         logging.error(e.stderr)
 
+# ファイルツリー生成関数
 def generate_file_tree(root_path, all_files):
     """
-    Generate a tree structure of all files.
+    すべてのファイルのツリー構造を生成。
     """
     tree = {}
     for file in all_files:
@@ -162,44 +164,43 @@ def generate_file_tree(root_path, all_files):
         parts = relative_path.split(os.sep)
         current_level = tree
         for part in parts:
-            if part not in current_level:
-                current_level[part] = {}
-            current_level = current_level[part]
+            current_level = current_level.setdefault(part, {})
     return tree
 
+# ツリー構造をMarkdown形式にフォーマット
 def format_tree(tree, indent=0):
     """
-    Format the tree structure into a Markdown list.
+    ツリー構造をMarkdownのリスト形式にフォーマット。
     """
     formatted = ""
     for key, subtree in tree.items():
         formatted += "  " * indent + f"- {key}\n"
-        formatted += format_tree(subtree, indent + 1)
+        if subtree:
+            formatted += format_tree(subtree, indent + 1)
     return formatted
 
+# 入力処理関数
 def process_input(input_paths, output_path, temp_folder, single_file, repo_depth):
     """
-    Process each item in the input paths: directories, zip files, and GitHub repos.
+    入力パス内の各アイテム（ディレクトリ、ZIPファイル、GitHubリポジトリ）を処理。
     """
     combined_content = []
     all_files = []
 
-    if single_file:
-        output_dir = os.path.dirname(output_path)
-    else:
-        output_dir = output_path
+    output_dir = os.path.dirname(output_path) if single_file else output_path
+    if not single_file:
         os.makedirs(output_dir, exist_ok=True)
 
     for item_path in input_paths:
         if os.path.isdir(item_path):
             process_folder(item_path, output_dir, single_file, combined_content, all_files)
         elif item_path.endswith('.zip'):
-            extract_to = os.path.join(temp_folder, os.path.basename(item_path).replace('.zip', ''))
+            extract_to = os.path.join(temp_folder, os.path.splitext(os.path.basename(item_path))[0])
             extract_zip(item_path, extract_to)
             process_folder(extract_to, output_dir, single_file, combined_content, all_files)
             shutil.rmtree(extract_to, ignore_errors=True)
         elif item_path.startswith("https://github.com"):
-            repo_name = os.path.basename(item_path).replace('.git', '')
+            repo_name = os.path.splitext(os.path.basename(item_path))[0]
             repo_temp_folder = os.path.join(temp_folder, repo_name)
             clone_git_repo(item_path, repo_temp_folder, depth=repo_depth)
             process_folder(repo_temp_folder, output_dir, single_file, combined_content, all_files)
@@ -208,7 +209,7 @@ def process_input(input_paths, output_path, temp_folder, single_file, repo_depth
             logging.info(f"Skipping file: {item_path}")
 
     if single_file and combined_content:
-        root_path = os.path.commonpath(all_files)
+        root_path = os.path.commonpath(all_files) if all_files else ""
         file_tree = generate_file_tree(root_path, all_files)
         formatted_tree = format_tree(file_tree)
         combined_content.insert(0, f"# File Tree\n\n{formatted_tree}\n")
@@ -222,12 +223,13 @@ def process_input(input_paths, output_path, temp_folder, single_file, repo_depth
 
     return output_dir if not single_file else os.path.dirname(output_path)
 
+# メインアプリケーションクラス
 class AutoMDApp:
     def __init__(self, master):
         self.master = master
-        master.title("automd~~")
-        master.geometry("900x700")  # ウィンドウの幅と高さを調整
-        master.resizable(True, True)  # ウィンドウのリサイズを許可
+        master.title("AutoMD")
+        master.geometry("900x700")
+        master.resizable(True, True)
 
         self.config_file = os.path.join(tempfile.gettempdir(), "automd_config.ini")
         self.config = configparser.ConfigParser()
@@ -248,7 +250,13 @@ class AutoMDApp:
         if os.path.exists(self.config_file):
             self.config.read(self.config_file)
         else:
-            self.config['DEFAULT'] = {'InputFiles': '', 'OutputPath': '', 'SingleFile': 'True', 'RepoDepth': 'Full', 'OpenFolder': 'True'}
+            self.config['DEFAULT'] = {
+                'InputFiles': '',
+                'OutputPath': '',
+                'SingleFile': 'True',
+                'RepoDepth': 'Full',
+                'OpenFolder': 'True'
+            }
             with open(self.config_file, 'w') as configfile:
                 self.config.write(configfile)
 
@@ -276,28 +284,33 @@ class AutoMDApp:
 
     def create_input_widgets(self, main_frame):
         ttk.Label(main_frame, text="Input Files or GitHub Repos:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.input_files_entry = scrolledtext.ScrolledText(main_frame, width=90, height=5)  # 幅を調整
+        self.input_files_entry = scrolledtext.ScrolledText(main_frame, width=90, height=5)
         self.input_files_entry.grid(row=0, column=1, pady=5, padx=(0, 5))
-        self.input_files_entry.insert(1.0, self.config['DEFAULT']['InputFiles'])  # 前回の入力値を設定
+        self.input_files_entry.insert(1.0, self.config['DEFAULT']['InputFiles'])
         ttk.Button(main_frame, text="Browse", command=self.browse_input_files).grid(row=0, column=2, pady=5)
 
     def create_output_widgets(self, main_frame):
         ttk.Label(main_frame, text="Output:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.output_entry = ttk.Entry(main_frame, width=90)  # 幅を調整
+        self.output_entry = ttk.Entry(main_frame, width=90)
         self.output_entry.grid(row=1, column=1, pady=5, padx=(0, 5))
-        self.output_entry.insert(0, self.config['DEFAULT']['OutputPath'])  # 前回の出力値を設定
+        self.output_entry.insert(0, self.config['DEFAULT']['OutputPath'])
         ttk.Button(main_frame, text="Browse", command=self.browse_output).grid(row=1, column=2, pady=5)
 
     def create_repo_depth_widgets(self, main_frame):
         ttk.Label(main_frame, text="Repository clone depth:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        self.repo_depth_var = tk.StringVar(value=self.config['DEFAULT']['RepoDepth'])  # 前回の設定を反映
-        repo_depth_combo = ttk.Combobox(main_frame, textvariable=self.repo_depth_var,
-                                        values=["Full", "1", "5", "10", "20", "50", "100"])
+        self.repo_depth_var = tk.StringVar(value=self.config['DEFAULT']['RepoDepth'])
+        repo_depth_combo = ttk.Combobox(
+            main_frame, textvariable=self.repo_depth_var,
+            values=["Full", "1", "5", "10", "20", "50", "100"]
+        )
         repo_depth_combo.grid(row=2, column=1, sticky=tk.W, pady=5)
 
     def create_misc_widgets(self, main_frame):
-        self.open_folder_var = tk.BooleanVar(value=self.config['DEFAULT'].getboolean('OpenFolder'))  # 前回の設定を反映
-        ttk.Checkbutton(main_frame, text="Open containing folder after processing", variable=self.open_folder_var).grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
+        self.open_folder_var = tk.BooleanVar(value=self.config['DEFAULT'].getboolean('OpenFolder'))
+        ttk.Checkbutton(
+            main_frame, text="Open containing folder after processing",
+            variable=self.open_folder_var
+        ).grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
 
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(main_frame, variable=self.progress_var, maximum=100)
@@ -325,7 +338,9 @@ class AutoMDApp:
         self.master.after(100, self.check_queue)
 
     def browse_input_files(self):
-        files_selected = filedialog.askopenfilenames(filetypes=[("All files", "*.*"), ("Zip files", "*.zip")])
+        files_selected = filedialog.askopenfilenames(
+            filetypes=[("All files", "*.*"), ("Zip files", "*.zip")]
+        )
         self.input_files_entry.delete(1.0, tk.END)
         self.input_files_entry.insert(tk.END, "\n".join(files_selected))
         if files_selected:
@@ -334,9 +349,13 @@ class AutoMDApp:
             self.output_entry.insert(0, output_name + ".md")
 
     def browse_output(self):
-        file_selected = filedialog.asksaveasfilename(defaultextension=".md", filetypes=[("Markdown files", "*.md")])
-        self.output_entry.delete(0, tk.END)
-        self.output_entry.insert(0, file_selected)
+        file_selected = filedialog.asksaveasfilename(
+            defaultextension=".md",
+            filetypes=[("Markdown files", "*.md")]
+        )
+        if file_selected:
+            self.output_entry.delete(0, tk.END)
+            self.output_entry.insert(0, file_selected)
 
     def start_processing(self):
         input_files = self.input_files_entry.get(1.0, tk.END).strip().split("\n")
@@ -345,12 +364,12 @@ class AutoMDApp:
         repo_depth = None if self.repo_depth_var.get() == "Full" else int(self.repo_depth_var.get())
         open_folder = self.open_folder_var.get()
 
-        if not input_files:
-            messagebox.showerror("Error", "Please select input files or repositories.")
+        if not any(input_files):
+            messagebox.showerror("Error", "Inputファイルまたはリポジトリを選択してください。")
             return
 
         if not output_path:
-            messagebox.showerror("Error", "Please specify an output path.")
+            messagebox.showerror("Error", "出力パスを指定してください。")
             return
 
         self.status_label.config(text="Processing...")
@@ -359,24 +378,31 @@ class AutoMDApp:
 
         def process_thread():
             try:
-                output_dir = process_input(input_files, output_path, self.temp_dir, single_file, repo_depth)
+                process_input(input_files, output_path, self.temp_dir, single_file, repo_depth)
                 self.master.after(0, lambda: self.progress_var.set(100))
                 self.master.after(0, lambda: self.status_label.config(text="Processing complete!"))
                 if open_folder:
-                    self.master.after(0, lambda: self.open_output_folder(output_dir))
+                    self.master.after(0, lambda: self.open_output_folder(output_path))
             except Exception as e:
                 self.master.after(0, lambda: messagebox.showerror("Error", f"An error occurred: {str(e)}"))
                 self.master.after(0, lambda: self.status_label.config(text="Processing failed."))
             finally:
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
-                self.save_config()  # 処理完了後に設定を保存
+                self.save_config()
 
         threading.Thread(target=process_thread, daemon=True).start()
 
     def open_output_folder(self, path):
-        if os.path.isfile(path):
-            path = os.path.dirname(path)
-        os.startfile(path)
+        path = os.path.dirname(path) if os.path.isfile(path) else path
+        try:
+            if os.name == 'nt':
+                os.startfile(path)
+            elif os.name == 'posix':
+                subprocess.call(['open' if sys.platform == 'darwin' else 'xdg-open', path])
+            else:
+                logging.warning(f"Cannot open folder on this OS: {os.name}")
+        except Exception as e:
+            logging.error(f"Failed to open folder: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
