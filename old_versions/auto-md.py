@@ -238,8 +238,8 @@ class AutoMDApp:
     def __init__(self, master):
         self.master = master
         master.title("automd~~")
-        master.geometry("800x600")
-        master.resizable(False, False)
+        master.geometry("900x700")  # ウィンドウの幅と高さを調整
+        master.resizable(True, True)  # ウィンドウのリサイズを許可
 
         self.config_file = os.path.join(tempfile.gettempdir(), "automd_config.ini")
         self.config = configparser.ConfigParser()
@@ -265,7 +265,7 @@ class AutoMDApp:
                 self.config.write(configfile)
 
     def save_config(self):
-        self.config['DEFAULT']['InputFiles'] = self.input_files_entry.get()
+        self.config['DEFAULT']['InputFiles'] = self.input_files_entry.get(1.0, tk.END).strip()
         self.config['DEFAULT']['OutputPath'] = self.output_entry.get()
         self.config['DEFAULT']['SingleFile'] = str(self.single_file_var.get())
         self.config['DEFAULT']['RepoDepth'] = self.repo_depth_var.get()
@@ -280,42 +280,38 @@ class AutoMDApp:
         self.master.rowconfigure(0, weight=1)
 
         ttk.Label(main_frame, text="Input Files or GitHub Repos:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.input_files_entry = ttk.Entry(main_frame, width=60)
+        self.input_files_entry = scrolledtext.ScrolledText(main_frame, width=90, height=5)  # 幅を調整
         self.input_files_entry.grid(row=0, column=1, pady=5, padx=(0, 5))
-        self.input_files_entry.insert(0, self.config['DEFAULT']['InputFiles'])  # 前回の入力値を設定
+        self.input_files_entry.insert(1.0, self.config['DEFAULT']['InputFiles'])  # 前回の入力値を設定
         ttk.Button(main_frame, text="Browse", command=self.browse_input_files).grid(row=0, column=2, pady=5)
 
         ttk.Label(main_frame, text="Output:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.output_entry = ttk.Entry(main_frame, width=60)
+        self.output_entry = ttk.Entry(main_frame, width=90)  # 幅を調整
         self.output_entry.grid(row=1, column=1, pady=5, padx=(0, 5))
         self.output_entry.insert(0, self.config['DEFAULT']['OutputPath'])  # 前回の出力値を設定
         ttk.Button(main_frame, text="Browse", command=self.browse_output).grid(row=1, column=2, pady=5)
 
-        self.single_file_var = tk.BooleanVar(value=self.config['DEFAULT'].getboolean('SingleFile'))  # 前回の設定を反映
-        ttk.Checkbutton(main_frame, text="Output to single file", variable=self.single_file_var,
-                        command=self.toggle_output_mode).grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=5)
-
-        ttk.Label(main_frame, text="Repository clone depth:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="Repository clone depth:").grid(row=2, column=0, sticky=tk.W, pady=5)
         self.repo_depth_var = tk.StringVar(value=self.config['DEFAULT']['RepoDepth'])  # 前回の設定を反映
         repo_depth_combo = ttk.Combobox(main_frame, textvariable=self.repo_depth_var,
                                         values=["Full", "1", "5", "10", "20", "50", "100"])
-        repo_depth_combo.grid(row=3, column=1, sticky=tk.W, pady=5)
+        repo_depth_combo.grid(row=2, column=1, sticky=tk.W, pady=5)
 
         self.open_folder_var = tk.BooleanVar(value=self.config['DEFAULT'].getboolean('OpenFolder'))  # 前回の設定を反映
-        ttk.Checkbutton(main_frame, text="Open containing folder after processing", variable=self.open_folder_var).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=5)
+        ttk.Checkbutton(main_frame, text="Open containing folder after processing", variable=self.open_folder_var).grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
 
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(main_frame, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
+        self.progress_bar.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
 
         self.status_label = ttk.Label(main_frame, text="")
-        self.status_label.grid(row=6, column=0, columnspan=3, pady=5)
+        self.status_label.grid(row=5, column=0, columnspan=3, pady=5)
 
         self.console_output = scrolledtext.ScrolledText(main_frame, height=15)
-        self.console_output.grid(row=7, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
+        self.console_output.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=10)
         self.console_output.config(state=tk.DISABLED)
 
-        ttk.Button(main_frame, text="Start Processing", command=self.start_processing).grid(row=8, column=1, pady=20)
+        ttk.Button(main_frame, text="Start Processing", command=self.start_processing).grid(row=7, column=1, pady=10)
 
         self.master.after(100, self.check_queue)
 
@@ -333,36 +329,22 @@ class AutoMDApp:
 
     def browse_input_files(self):
         files_selected = filedialog.askopenfilenames(filetypes=[("All files", "*.*"), ("Zip files", "*.zip")])
-        self.input_files_entry.delete(0, tk.END)
-        self.input_files_entry.insert(0, " ".join(files_selected))
+        self.input_files_entry.delete(1.0, tk.END)
+        self.input_files_entry.insert(tk.END, "\n".join(files_selected))
         if files_selected:
             output_name = os.path.splitext(os.path.basename(files_selected[0]))[0]
             self.output_entry.delete(0, tk.END)
-            self.output_entry.insert(0, output_name + (".md" if self.single_file_var.get() else ""))
+            self.output_entry.insert(0, output_name + ".md")
 
     def browse_output(self):
-        if self.single_file_var.get():
-            file_selected = filedialog.asksaveasfilename(defaultextension=".md", filetypes=[("Markdown files", "*.md")])
-        else:
-            file_selected = filedialog.askdirectory()
+        file_selected = filedialog.asksaveasfilename(defaultextension=".md", filetypes=[("Markdown files", "*.md")])
         self.output_entry.delete(0, tk.END)
         self.output_entry.insert(0, file_selected)
 
-    def toggle_output_mode(self):
-        current_output = self.output_entry.get()
-        if self.single_file_var.get():
-            if not current_output.endswith('.md'):
-                self.output_entry.delete(0, tk.END)
-                self.output_entry.insert(0, current_output + '.md')
-        else:
-            if current_output.endswith('.md'):
-                self.output_entry.delete(0, tk.END)
-                self.output_entry.insert(0, os.path.splitext(current_output)[0])
-
     def start_processing(self):
-        input_files = self.input_files_entry.get().split()
+        input_files = self.input_files_entry.get(1.0, tk.END).strip().split("\n")
         output_path = self.output_entry.get()
-        single_file = self.single_file_var.get()
+        single_file = True  # 常に単一ファイル出力
         repo_depth = None if self.repo_depth_var.get() == "Full" else int(self.repo_depth_var.get())
         open_folder = self.open_folder_var.get()
 
