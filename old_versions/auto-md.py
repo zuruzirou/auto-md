@@ -14,8 +14,6 @@ import threading
 import queue
 import configparser  # 追加
 
-
-
 class QueueHandler(logging.Handler):
     def __init__(self, log_queue):
         super().__init__()
@@ -23,7 +21,6 @@ class QueueHandler(logging.Handler):
 
     def emit(self, record):
         self.log_queue.put(self.format(record))
-
 
 # file~~extensions~~configuration
 TEXT_EXTENSIONS = [
@@ -48,7 +45,6 @@ def clean_text(text):
     text = re.sub(r'[^\x00-\x7F]+', '', text)
     return text.strip()
 
-
 def format_as_markdown(text, title, file_path, all_files):
     """
     Format the cleaned text into an optimized Markdown structure for LLM indexing.
@@ -72,7 +68,6 @@ def format_as_markdown(text, title, file_path, all_files):
             formatted_text += f"{line.strip()}\n\n"
 
     return formatted_text
-
 
 def process_file(file_path, output_dir, single_file, all_files):
     """
@@ -101,7 +96,6 @@ def process_file(file_path, output_dir, single_file, all_files):
         logging.error(f"Error processing file {file_path}: {e}")
         return None
 
-
 def process_folder(folder_path, output_dir, single_file, combined_content, all_files):
     """
     Process all text files in a given folder (and its subfolders).
@@ -125,7 +119,6 @@ def process_folder(folder_path, output_dir, single_file, combined_content, all_f
             elif any(file.endswith(ext) for ext in SKIP_EXTENSIONS):
                 logging.info(f"Skipping file: {file_path}")
 
-
 def extract_zip(zip_path, extract_to):
     """
     Extract a zip file to the specified directory.
@@ -137,7 +130,6 @@ def extract_zip(zip_path, extract_to):
         logging.info(f"Extracted to: {extract_to}")
     except Exception as e:
         logging.error(f"Error extracting zip file {zip_path}: {e}")
-
 
 def clone_git_repo(repo_url, temp_folder, depth=None):
     """
@@ -160,7 +152,6 @@ def clone_git_repo(repo_url, temp_folder, depth=None):
         logging.error(f"Error cloning GitHub repository {repo_url}: {e}")
         logging.error(e.stderr)
 
-
 def generate_file_tree(root_path, all_files):
     """
     Generate a tree structure of all files.
@@ -176,7 +167,6 @@ def generate_file_tree(root_path, all_files):
             current_level = current_level[part]
     return tree
 
-
 def format_tree(tree, indent=0):
     """
     Format the tree structure into a Markdown list.
@@ -186,7 +176,6 @@ def format_tree(tree, indent=0):
         formatted += "  " * indent + f"- {key}\n"
         formatted += format_tree(subtree, indent + 1)
     return formatted
-
 
 def process_input(input_paths, output_path, temp_folder, single_file, repo_depth):
     """
@@ -233,7 +222,6 @@ def process_input(input_paths, output_path, temp_folder, single_file, repo_depth
 
     return output_dir if not single_file else os.path.dirname(output_path)
 
-
 class AutoMDApp:
     def __init__(self, master):
         self.master = master
@@ -279,24 +267,35 @@ class AutoMDApp:
         self.master.columnconfigure(0, weight=1)
         self.master.rowconfigure(0, weight=1)
 
+        self.create_input_widgets(main_frame)
+        self.create_output_widgets(main_frame)
+        self.create_repo_depth_widgets(main_frame)
+        self.create_misc_widgets(main_frame)
+
+        self.master.after(100, self.check_queue)
+
+    def create_input_widgets(self, main_frame):
         ttk.Label(main_frame, text="Input Files or GitHub Repos:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.input_files_entry = scrolledtext.ScrolledText(main_frame, width=90, height=5)  # 幅を調整
         self.input_files_entry.grid(row=0, column=1, pady=5, padx=(0, 5))
         self.input_files_entry.insert(1.0, self.config['DEFAULT']['InputFiles'])  # 前回の入力値を設定
         ttk.Button(main_frame, text="Browse", command=self.browse_input_files).grid(row=0, column=2, pady=5)
 
+    def create_output_widgets(self, main_frame):
         ttk.Label(main_frame, text="Output:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.output_entry = ttk.Entry(main_frame, width=90)  # 幅を調整
         self.output_entry.grid(row=1, column=1, pady=5, padx=(0, 5))
         self.output_entry.insert(0, self.config['DEFAULT']['OutputPath'])  # 前回の出力値を設定
         ttk.Button(main_frame, text="Browse", command=self.browse_output).grid(row=1, column=2, pady=5)
 
+    def create_repo_depth_widgets(self, main_frame):
         ttk.Label(main_frame, text="Repository clone depth:").grid(row=2, column=0, sticky=tk.W, pady=5)
         self.repo_depth_var = tk.StringVar(value=self.config['DEFAULT']['RepoDepth'])  # 前回の設定を反映
         repo_depth_combo = ttk.Combobox(main_frame, textvariable=self.repo_depth_var,
                                         values=["Full", "1", "5", "10", "20", "50", "100"])
         repo_depth_combo.grid(row=2, column=1, sticky=tk.W, pady=5)
 
+    def create_misc_widgets(self, main_frame):
         self.open_folder_var = tk.BooleanVar(value=self.config['DEFAULT'].getboolean('OpenFolder'))  # 前回の設定を反映
         ttk.Checkbutton(main_frame, text="Open containing folder after processing", variable=self.open_folder_var).grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
 
@@ -312,8 +311,6 @@ class AutoMDApp:
         self.console_output.config(state=tk.DISABLED)
 
         ttk.Button(main_frame, text="Start Processing", command=self.start_processing).grid(row=7, column=1, pady=10)
-
-        self.master.after(100, self.check_queue)
 
     def check_queue(self):
         while True:
